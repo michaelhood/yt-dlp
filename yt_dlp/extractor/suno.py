@@ -9,7 +9,7 @@ from ..utils import (
 
 
 class SunoIE(InfoExtractor):
-    _VALID_URL = r'https?://(?:www\.)?suno\.com/embed/(?P<id>[0-9a-f-]+)'
+    _VALID_URL = r'https?://(?:www\.)?suno\.com/embed/(?P<id>[a-zA-Z0-9_-]+)$'
     _TESTS = [{
         'url': 'https://suno.com/embed/afc9a71f-7687-4410-94a7-b6dd45418ab8',
         'info_dict': {
