@@ -1,9 +1,7 @@
 from .common import InfoExtractor
 from ..utils import (
     ExtractorError,
-    int_or_none,
-    str_or_none,
-    traverse_obj,
+    float_or_none,
     url_or_none,
 )
 
@@ -27,49 +25,63 @@ class SunoIE(InfoExtractor):
         video_id = self._match_id(url)
         webpage = self._download_webpage(url, video_id)
 
-        # Extract audio URL directly from the content (most reliable)
-        # Pattern found in the JSON data embedded in the page
-        audio_url = self._search_regex(
-            r'audio_url.*?([^"\']+\.mp3)', webpage, 'audio url', default=None)
-        
-        # Extract duration from the JSON data  
-        duration = None
-        duration_match = self._search_regex(
-            r'duration.*?([0-9.]+)', webpage, 'duration', default=None)
-        if duration_match:
-            try:
-                duration = float(duration_match)
-            except ValueError:
-                pass
-        
-        # Extract uploader from display_name in the clip data (with escaped quotes)
-        uploader = self._search_regex(
-            r'display_name\\":\\"([^\\"]+)\\"', webpage, 'uploader', default=None)
-        
-        # Extract title from the clip data (with escaped quotes)
-        title = self._search_regex(
-            r'title\\":\\"([^\\"]+)\\"', webpage, 'title from clip', default=None)
-        
+        # Extract audio URL using multiple fallback patterns
+        audio_url = (
+            self._search_regex(
+                r'audio_url["\']:["\']\s*([^"\']+\.mp3)', webpage, 'audio url', default=None)
+            or self._search_regex(
+                r'"audioUrl":\s*"([^"]+\.mp3)"', webpage, 'audio url alt', default=None)
+            or self._search_regex(
+                r'<audio[^>]+src=["\']\s*([^"\']+\.mp3)', webpage, 'audio url from tag', default=None)
+        )
+
+        # Extract duration with better error handling
+        duration = float_or_none(self._search_regex(
+            r'duration["\']?\s*:\s*([0-9.]+)', webpage, 'duration', default=None))
+
+        # Extract uploader with multiple fallback patterns
+        uploader = (
+            self._search_regex(
+                r'display_name\\?["\']:\s*\\?["\']([^"\'\\]+)\\?["\']', webpage, 'uploader', default=None)
+            or self._search_regex(
+                r'"uploader":\s*"([^"]+)"', webpage, 'uploader alt', default=None)
+        )
+
+        # Extract title with multiple fallback patterns
+        title = (
+            self._search_regex(
+                r'title\\?["\']:\s*\\?["\']([^"\'\\]+)\\?["\']', webpage, 'title', default=None)
+            or self._og_search_title(webpage, default=None)
+            or self._html_search_meta('title', webpage, default=None)
+        )
+
         # Clean up title if it includes site name
         if title:
             title = title.replace(' | Suno', '').strip()
-        
-        # Extract description from og:description in metadata (with escaped quotes)
-        description = self._search_regex(
-            r'\\\"og:description\\\"[^\\\"]*\\\"content\\\":\\\"([^\\\"]+)\\\"', webpage, 'description from og', default=None)
-        
+
+        # Extract description with multiple fallback patterns
+        description = (
+            self._search_regex(
+                r'\\?["\']og:description\\?["\'][^"\']*\\?["\']content\\?["\']:\s*\\?["\']([^"\'\\]+)\\?["\']',
+                webpage, 'description', default=None)
+            or self._og_search_description(webpage, default=None)
+            or self._html_search_meta('description', webpage, default=None)
+        )
+
+        # Ensure we have a valid audio URL
+        audio_url = url_or_none(audio_url)
         if not audio_url:
             raise ExtractorError(
                 'Unable to find audio URL. The page structure may have changed.',
                 expected=True)
-        
+
         return {
             'id': video_id,
             'title': title or video_id,
             'description': description,
             'url': audio_url,
-            'ext': 'mp3',  # Default extension, may be auto-detected from URL
+            'ext': 'mp3',
             'duration': duration,
             'uploader': uploader,
-            'vcodec': 'none',  # Audio-only content
+            'vcodec': 'none',
         }
